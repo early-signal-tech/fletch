@@ -28,8 +28,8 @@ A command-line tool for transferring data between databases using Apache Arrow D
 ### Build from Source
 
 ```bash
-git clone <your-repo>
-cd go-test
+git clone https://github.com/early-signal-tech/fletch
+cd fletch
 go build -o fletch
 ```
 
