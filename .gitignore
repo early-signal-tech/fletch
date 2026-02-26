@@ -1,0 +1,53 @@
+# Binaries
+fletch
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test output
+tests/
+
+# Local database files
+*.duckdb
+*.duckdb.wal
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment and credentials
+.env
+.env.*
+*.pem
+service-account*.json
+
+# Local config files (may contain credentials)
+config.yaml
+config.json
+*.local.*
