@@ -32,6 +32,7 @@ vendor/
 Thumbs.db
 
 # Test output
+threads/
 tests/
 
 # Local database files
