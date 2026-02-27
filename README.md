@@ -32,6 +32,15 @@ git clone https://github.com/early-signal-tech/fletch
 cd fletch
 go build -o fletch
 ```
+### Run from the project directory:
+```bash
+./fletch transfer
+```
+### Or install globally (requires $GOPATH/bin or $HOME/go/bin in your PATH):
+```bash
+go install .
+# Then run: fletch transfer
+```
 
 ### ADBC Driver Installation
 
