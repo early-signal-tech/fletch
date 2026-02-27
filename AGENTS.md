@@ -65,10 +65,55 @@ fletch transfer \
 | PostgreSQL | `postgresql` | `postgresql://user:pass@host:port/database` |
 | SQLite | `sqlite` | `file:path/to/db.sqlite` |
 | DuckDB | `duckdb` | `path/to/db.duckdb` or `:memory:` |
-| BigQuery | `bigquery` | `bigquery://project-id/dataset?credentialsFile=/path/to/key.json` |
+| BigQuery | `bigquery` | `bigquery://project-id/dataset` |
 | MotherDuck | `motherduck` | `md:database_name?motherduck_token=TOKEN` or `md:database_name` (with `MOTHERDUCK_TOKEN` env var) |
 | Snowflake | `snowflake` | `snowflake://user:pass@account/database` |
 | Flight SQL | `flightsql` | `grpc://host:port` |
+
+## BigQuery Authentication & Connection
+
+**Important**: The ADBC BigQuery driver uses standard ADBC configuration parameters, not URI query parameters.
+
+### Connection Format
+
+```bash
+fletch transfer \
+  --source-driver bigquery \
+  --source-uri "bigquery://project-id/dataset" \
+  --dest-driver duckdb \
+  --dest-uri "output.duckdb" \
+  --dest-table my_table \
+  --query "SELECT * FROM my_table" \
+  --yes --output json
+```
+
+### Authentication Methods
+
+1. **Application Default Credentials (ADC)** - Recommended for development
+   ```bash
+   gcloud auth application-default login
+   # Creates: ~/.config/gcloud/application_default_credentials.json
+   # Then use fletch with just: bigquery://project-id/dataset
+   ```
+
+2. **Environment Variable**
+   ```bash
+   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+   ```
+
+3. **Service Account Key File** - Use with GOOGLE_APPLICATION_CREDENTIALS env var
+
+### Reference Implementation
+
+See [columnar-tech/adbc-quickstarts](https://github.com/columnar-tech/adbc-quickstarts/tree/main/go/bigquery) for the official ADBC BigQuery Go example using driver configuration:
+
+```go
+db, err := drv.NewDatabase(map[string]string{
+    "driver":                       "bigquery",
+    "adbc.bigquery.sql.project_id": "my-gcp-project",
+    "adbc.bigquery.sql.dataset_id": "bigquery-public-data",
+})
+```
 
 ## JSON Output
 
@@ -191,6 +236,32 @@ fletch transfer \
   --yes --output json --auto-install-drivers
 ```
 
+### BigQuery to DuckDB
+
+```bash
+fletch transfer \
+  --source-driver bigquery \
+  --source-uri "bigquery://cloud-analytics-457323/cloud-analytics-457323" \
+  --dest-driver duckdb --dest-uri "analytics_export.duckdb" \
+  --dest-table streaming_data \
+  --query "SELECT * FROM streaming_data WHERE date >= '2025-01-01'" \
+  --ingest-mode create --transfer-mode streaming \
+  --yes --output json
+```
+
+### DuckDB to BigQuery
+
+```bash
+fletch transfer \
+  --source-driver duckdb --source-uri "local_data.duckdb" \
+  --dest-driver bigquery \
+  --dest-uri "bigquery://my-project/my-dataset" \
+  --dest-table imported_data \
+  --query "SELECT * FROM source_table" \
+  --ingest-mode create --transfer-mode streaming \
+  --yes --output json
+```
+
 ### Query from file via stdin
 
 ```bash
@@ -225,6 +296,10 @@ fletch transfer \
 
 - Uses `cobra` for CLI framework and `promptui` for interactive prompts.
 - Driver configuration is mapped per-database in `buildDriverConfig()` in `connection.go`. DuckDB uses `path`, most others use `uri`.
+- **BigQuery Configuration**: BigQuery connections parse the URI format `bigquery://project-id/dataset` and convert it to ADBC driver parameters:
+  - `adbc.bigquery.sql.project_id` (extracted from project-id)
+  - `adbc.bigquery.sql.dataset_id` (extracted from dataset)
+  - This configuration approach is required by the ADBC BigQuery driver (see [adbc-quickstarts reference](https://github.com/columnar-tech/adbc-quickstarts/tree/main/go/bigquery))
 - MotherDuck connections use the `duckdb` driver internally with an `md:` URI prefix.
 - Transaction commit may silently succeed even when manual transaction control isn't supported (e.g., DuckDB autocommit). This is not an error.
 - The `create` ingest mode automatically switches to `append` after the first batch to avoid "table already exists" errors on multi-batch transfers.

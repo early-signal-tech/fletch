@@ -108,7 +108,19 @@ func buildDriverConfig(config *DatabaseConfig) map[string]string {
 	case "postgresql", "postgres":
 		driverConfig["uri"] = config.URI
 	case "bigquery":
-		driverConfig["uri"] = config.URI
+		// Parse BigQuery URI format: bigquery://project-id/dataset
+		// Extract project-id and dataset from URI
+		parts := strings.TrimPrefix(config.URI, "bigquery://")
+		pathParts := strings.Split(parts, "/")
+		if len(pathParts) >= 2 {
+			projectID := pathParts[0]
+			dataset := pathParts[1]
+			driverConfig["adbc.bigquery.sql.project_id"] = projectID
+			driverConfig["adbc.bigquery.sql.dataset_id"] = dataset
+		} else if len(pathParts) == 1 {
+			// Allow just project-id if dataset is not provided
+			driverConfig["adbc.bigquery.sql.project_id"] = pathParts[0]
+		}
 	case "snowflake":
 		driverConfig["uri"] = config.URI
 	case "flightsql":
