@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -130,13 +129,12 @@ func installDriversMacOS(driverName string) error {
 	if err == nil && (result == "y" || result == "Y" || result == "") {
 		if err := installDbcTool(); err != nil {
 			logInfo("  ⚠️  Failed to install dbc: %v\n", err)
-			logInfoln("  Falling back to Apache Arrow installation...")
-		} else {
-			return installDriverViaDbc(driverName)
+			return fmt.Errorf("dbc installation failed: %w\nInstall dbc manually: brew tap columnar-tech/tap && brew install --cask dbc", err)
 		}
+		return installDriverViaDbc(driverName)
 	}
 
-	return installViaApacheArrow()
+	return fmt.Errorf("dbc is required to install ADBC drivers on macOS. Install it with: brew tap columnar-tech/tap && brew install --cask dbc")
 }
 
 func installDriversMacOSNonInteractive(driverName string) error {
@@ -148,8 +146,7 @@ func installDriversMacOSNonInteractive(driverName string) error {
 	logInfoln("  dbc not found, attempting to install dbc first...")
 	if err := installDbcTool(); err != nil {
 		logInfo("  ⚠️  Failed to install dbc: %v\n", err)
-		logInfoln("  Falling back to Apache Arrow installation...")
-		return installViaApacheArrow()
+		return fmt.Errorf("dbc installation failed: %w\nInstall dbc manually: brew tap columnar-tech/tap && brew install --cask dbc", err)
 	}
 	return installDriverViaDbc(driverName)
 }
@@ -196,43 +193,6 @@ func installDriverViaDbc(driverName string) error {
 	logInfo("\n✓ %s driver installed successfully via dbc!\n", driverName)
 	logInfoln("\nNote: If the driver is still not found, you may need to restart your terminal")
 	logInfoln("or set the ADBC_DRIVER_PATH environment variable.")
-
-	return nil
-}
-
-func installViaApacheArrow() error {
-	logInfoln("\n  Installing Apache Arrow with ADBC drivers via Homebrew...")
-	logInfoln("  This installs all ADBC drivers but may take several minutes...")
-	logInfoln("")
-
-	if !isCommandAvailable("brew") {
-		logInfoln("\n❌ Homebrew is not installed.")
-		logInfoln("\nTo install ADBC drivers manually:")
-		logInfoln("1. Install Homebrew: https://brew.sh")
-		logInfoln("2. Install dbc: brew tap columnar-tech/tap && brew install --cask dbc")
-		logInfoln("3. Or install Apache Arrow: brew install apache-arrow")
-		logInfoln("4. Or build from source: https://github.com/apache/arrow-adbc")
-		return fmt.Errorf("homebrew not found")
-	}
-
-	cmd := exec.Command("brew", "install", "apache-arrow")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to install via Homebrew: %w", err)
-	}
-
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		adbcPath := filepath.Join(homeDir, "Library", "Application Support", "ADBC", "Drivers")
-		os.MkdirAll(adbcPath, 0755)
-		logInfo("\n✓ ADBC driver directory created: %s\n", adbcPath)
-	}
-
-	logInfoln("\n✓ Apache Arrow with ADBC drivers installed successfully!")
-	logInfoln("\nYou may need to restart the terminal or run:")
-	logInfoln("  export ADBC_DRIVER_PATH=\"$(brew --prefix)/lib\"")
 
 	return nil
 }

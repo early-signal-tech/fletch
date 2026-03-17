@@ -46,10 +46,9 @@ go install .
 
 The CLI will **automatically detect** if ADBC drivers are missing and offer to install them for you using the best method available:
 
-**macOS** (Intelligent 3-tier approach):
-1. **Priority 1**: Uses `dbc` if already installed (fastest, most lightweight)
-2. **Priority 2**: Offers to install `dbc` first (recommended - targeted driver installation)
-3. **Priority 3**: Falls back to `apache-arrow` via Homebrew (installs all drivers)
+**macOS** (dbc only):
+1. Uses `dbc` if already installed (fastest, most lightweight)
+2. Offers to install `dbc` first (recommended - targeted driver installation)
 
 **What is dbc?**
 `dbc` is Columnar Technologies' database connectivity tool that provides:
@@ -70,14 +69,11 @@ The CLI will **automatically detect** if ADBC drivers are missing and offer to i
 If you prefer to install drivers before running the CLI:
 
 ```bash
-# macOS - Recommended (dbc)
+# macOS (dbc)
 brew tap columnar-tech/tap && brew install --cask dbc
 dbc install sqlite
 dbc install postgresql
 dbc install duckdb
-
-# macOS - Alternative (Apache Arrow - all drivers)
-brew install apache-arrow
 
 # Ubuntu/Debian
 sudo apt install apache-arrow-adbc
