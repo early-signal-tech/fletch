@@ -18,6 +18,30 @@ A command-line tool for transferring data between databases using Apache Arrow D
 - **Distinct Exit Codes**: Granular error codes for automated error handling
 - **High Performance**: Built on Apache Arrow for zero-copy data transfer
 
+## Quick Install
+
+Download and run the installer script in one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/early-signal-tech/fletch/main/install.sh | bash
+```
+
+**Or with a specific version:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/early-signal-tech/fletch/main/install.sh | bash -s v0.2.0
+```
+
+**Or to a custom location:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/early-signal-tech/fletch/main/install.sh | bash -s latest /opt/fletch
+```
+
+The installer will:
+- Detect your OS and architecture automatically
+- Download the latest binary from GitHub releases
+- Install to `/usr/local/bin/fletch` (or your custom path)
+- Verify the installation works
+
 ## Installation
 
 ### Prerequisites
