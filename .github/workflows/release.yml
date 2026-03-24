@@ -16,7 +16,7 @@ jobs:
           - os: macos-latest
             goarch: arm64
             artifact: fletch-darwin-arm64
-          - os: macos-13
+          - os: macos-14
             goarch: amd64
             artifact: fletch-darwin-amd64
           - os: windows-latest
