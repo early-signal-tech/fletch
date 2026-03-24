@@ -1,5 +1,6 @@
 # Binaries
 fletch
+dist/
 *.exe
 *.exe~
 *.dll
