@@ -8,12 +8,58 @@ A CLI for transferring data between databases using Apache Arrow Database Connec
 
 ## Building
 
+Requires Go 1.25+.
+
+### Local Build
+
+Build for your current platform:
+
 ```bash
-cd /path/to/go-test
-go build -o fletch
+go build -o fletch .
 ```
 
-Requires Go 1.25+.
+Or use the Makefile for convenience:
+
+```bash
+make build              # Build for current platform
+make build-all          # Build both macOS architectures (ARM64 + AMD64)
+make clean              # Remove dist/ directory
+```
+
+### Platform-Specific Binaries
+
+| Platform | Binary | Command |
+|----------|--------|---------|
+| macOS Apple Silicon (ARM64) | `fletch-darwin-arm64` | `make dist/fletch-darwin-arm64` |
+| macOS Intel (AMD64) | `fletch-darwin-amd64` | `make dist/fletch-darwin-amd64` |
+| Windows | `fletch-windows-amd64.exe` | Built via GitHub Actions only |
+
+**Note**: CGO is required (ADBC driver manager wraps C code), so Windows binaries can only be built natively on Windows. Use GitHub Actions for cross-platform releases.
+
+### Creating a Release
+
+1. **Commit your changes:**
+   ```bash
+   git add .
+   git commit -m "Your message"
+   git push origin main
+   ```
+
+2. **Create a version tag:**
+   ```bash
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+3. **GitHub Actions builds all platforms automatically:**
+   - Triggered by pushing a tag matching `v*`
+   - Builds natively on:
+     - macOS (arm64 + amd64)
+     - Windows (amd64)
+   - Embeds version from git tag into binary
+   - Creates a GitHub Release with all binaries + SHA256 checksums
+
+**Note**: If a build fails, fix the issue, push the fix, and re-run the workflow from the GitHub Actions tab (don't create a new tag unless you increment the version).
 
 ## Non-Interactive Usage (Agent Mode)
 
