@@ -4,7 +4,7 @@ This file provides instructions for AI agents (Cursor, Claude Code, GitHub Copil
 
 ## What is Fletch?
 
-A CLI for transferring data between databases using Apache Arrow Database Connectivity (ADBC). It supports PostgreSQL, SQLite, DuckDB, BigQuery, MotherDuck, Snowflake, and Flight SQL.
+A CLI for transferring data between databases using Apache Arrow Database Connectivity (ADBC). It supports PostgreSQL, SQLite, DuckDB, BigQuery, MotherDuck, Snowflake, Flight SQL, and local Parquet files (as a destination).
 
 ## Building
 
@@ -27,7 +27,7 @@ Requires Go 1.25+.
 | `--source-uri` | Source connection URI |
 | `--dest-driver` | Destination database driver name |
 | `--dest-uri` | Destination connection URI |
-| `--dest-table` | Destination table name |
+| `--dest-table` | Destination table name (not required when `--dest-driver parquet`) |
 | `--query` or `--query-file` | SQL query (use `--query-file -` for stdin) |
 
 ### Optional Flags
@@ -69,6 +69,7 @@ fletch transfer \
 | MotherDuck | `motherduck` | `md:database_name?motherduck_token=TOKEN` or `md:database_name` (with `MOTHERDUCK_TOKEN` env var) |
 | Snowflake | `snowflake` | `snowflake://user:pass@account/database` |
 | Flight SQL | `flightsql` | `grpc://host:port` |
+| Parquet File | `parquet` | `path/to/output.parquet` (destination only; built-in, no external driver needed) |
 
 ## BigQuery Authentication & Connection
 
@@ -272,6 +273,21 @@ cat complex_query.sql | fletch transfer \
   --yes --output json
 ```
 
+### PostgreSQL to Parquet file
+
+```bash
+fletch transfer \
+  --source-driver postgresql \
+  --source-uri "postgresql://user:pass@host:5432/mydb" \
+  --dest-driver parquet \
+  --dest-uri "orders_export.parquet" \
+  --query "SELECT * FROM orders WHERE year = 2025" \
+  --ingest-mode create \
+  --yes --output json
+```
+
+Note: `--dest-table` is not required when `--dest-driver parquet`. Use `--ingest-mode replace` to overwrite an existing file. Snappy compression is applied automatically. Append mode is not supported for Parquet.
+
 ### Validate before executing
 
 ```bash
@@ -291,6 +307,7 @@ fletch transfer \
 | `connection.go` | Database config, connection helpers, test-connection command |
 | `drivers.go` | Driver installation, list-drivers command |
 | `output.go` | Exit codes, result types, JSON output helpers |
+| `parquet.go` | Built-in Parquet file destination writer (`isParquetDriver`, `writeParquetDest`) |
 
 ## Development Notes
 
