@@ -34,6 +34,7 @@ var knownDrivers = []DriverInfo{
 	{Name: "MotherDuck", Driver: "motherduck", URIExample: "md:database_name"},
 	{Name: "Snowflake", Driver: "snowflake", URIExample: "snowflake://user:pass@account/database"},
 	{Name: "Flight SQL", Driver: "flightsql", URIExample: "grpc://host:port"},
+	{Name: "Parquet File", Driver: "parquet", URIExample: "path/to/output.parquet (built-in, destination only)"},
 }
 
 var listDriversCmd = &cobra.Command{

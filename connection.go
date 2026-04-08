@@ -125,11 +125,23 @@ func buildDriverConfig(config *DatabaseConfig) map[string]string {
 		driverConfig["uri"] = config.URI
 	case "flightsql":
 		driverConfig["uri"] = config.URI
+	case "parquet":
+		driverConfig["path"] = config.URI
 	default:
 		driverConfig["uri"] = config.URI
 	}
 
 	return driverConfig
+}
+
+// needsURIMask returns true for drivers whose URIs contain embedded credentials.
+func needsURIMask(driver string) bool {
+	switch strings.ToLower(driver) {
+	case "postgresql", "postgres", "snowflake":
+		return true
+	default:
+		return false
+	}
 }
 
 func getConnectionHelp(driver string) string {
@@ -151,16 +163,12 @@ func getConnectionHelp(driver string) string {
 			"  Or use Application Default Credentials: bigquery://project-id/dataset\n" +
 			"  To set credentials via environment: " + envCmd
 	case "motherduck", "md":
-		var envCmd string
-		if runtime.GOOS == "windows" {
-			envCmd = "set MOTHERDUCK_TOKEN=your_token (cmd) or $env:MOTHERDUCK_TOKEN=\"your_token\" (PowerShell)"
-		} else {
-			envCmd = "export MOTHERDUCK_TOKEN=your_token"
-		}
-		return "  Example: md:database_name?motherduck_token=your_token\n" +
-			"  Or set via environment variable: " + envCmd + "\n" +
-			"  Then use: md:database_name\n" +
-			"  Get your token from: https://motherduck.com"
+		return "  Example: md:database_name\n" +
+			"  Authentication is handled automatically via browser SSO."
+	case "parquet":
+		return "  Example: path/to/output.parquet or /absolute/path/data.parquet\n" +
+			"  Built-in driver — no external installation required.\n" +
+			"  Ingest modes: create (fail if exists), replace (overwrite). Append is not supported."
 	default:
 		return ""
 	}
@@ -180,28 +188,38 @@ func resolveIngestMode(mode string) (string, error) {
 }
 
 // selectDatabase prompts the user to choose a database type and enter connection details.
+// Parquet is only available as a destination, not a source.
 func selectDatabase(dbType string) (*DatabaseConfig, error) {
 	fmt.Printf("\n📦 Select %s Database\n", dbType)
 
-	templates := []DatabaseConfig{
+	isDestination := dbType == "DESTINATION"
+
+	allTemplates := []DatabaseConfig{
 		{Name: "PostgreSQL", Driver: "postgresql", URI: ""},
 		{Name: "SQLite", Driver: "sqlite", URI: ""},
 		{Name: "DuckDB", Driver: "duckdb", URI: ""},
 		{Name: "BigQuery", Driver: "bigquery", URI: ""},
 		{Name: "MotherDuck", Driver: "motherduck", URI: ""},
+		{Name: "Parquet File", Driver: "parquet", URI: ""},
 		{Name: "Custom", Driver: "", URI: ""},
+	}
+
+	var templates []DatabaseConfig
+	for _, t := range allTemplates {
+		if t.Driver == "parquet" && !isDestination {
+			continue
+		}
+		templates = append(templates, t)
+	}
+
+	items := make([]string, len(templates))
+	for i, t := range templates {
+		items[i] = t.Name
 	}
 
 	promptDB := promptui.Select{
 		Label: fmt.Sprintf("Select %s database type", dbType),
-		Items: []string{
-			templates[0].Name,
-			templates[1].Name,
-			templates[2].Name,
-			templates[3].Name,
-			templates[4].Name,
-			templates[5].Name,
-		},
+		Items: items,
 	}
 
 	idx, _, err := promptDB.Run()
@@ -227,9 +245,20 @@ func selectDatabase(dbType string) (*DatabaseConfig, error) {
 		fmt.Println(helpText)
 	}
 
-	promptURI := promptui.Prompt{
-		Label: fmt.Sprintf("%s connection URI", config.Name),
-		Mask:  '*',
+	var promptURI promptui.Prompt
+	if isParquetDriver(config.Driver) {
+		promptURI = promptui.Prompt{
+			Label: fmt.Sprintf("%s file path", config.Name),
+		}
+	} else if needsURIMask(config.Driver) {
+		promptURI = promptui.Prompt{
+			Label: fmt.Sprintf("%s connection URI", config.Name),
+			Mask:  '*',
+		}
+	} else {
+		promptURI = promptui.Prompt{
+			Label: fmt.Sprintf("%s connection URI", config.Name),
+		}
 	}
 	config.URI, err = promptURI.Run()
 	if err != nil {
@@ -237,6 +266,47 @@ func selectDatabase(dbType string) (*DatabaseConfig, error) {
 	}
 
 	return &config, nil
+}
+
+func selectParquetIngestMode() (string, error) {
+	fmt.Println("\n🔧 File Write Mode")
+
+	modes := []struct {
+		Name        string
+		Description string
+		Value       string
+	}{
+		{
+			Name:        "Create",
+			Description: "Create new file (fails if file already exists)",
+			Value:       adbc.OptionValueIngestModeCreate,
+		},
+		{
+			Name:        "Replace",
+			Description: "Overwrite existing file",
+			Value:       adbc.OptionValueIngestModeReplace,
+		},
+	}
+
+	tpl := &promptui.SelectTemplates{
+		Label:    "{{ . }}?",
+		Active:   "▶ {{ .Name | cyan }} - {{ .Description | faint }}",
+		Inactive: "  {{ .Name | cyan }} - {{ .Description | faint }}",
+		Selected: "✓ {{ .Name | green }}",
+	}
+
+	prompt := promptui.Select{
+		Label:     "Select file write mode",
+		Items:     modes,
+		Templates: tpl,
+	}
+
+	idx, _, err := prompt.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return modes[idx].Value, nil
 }
 
 func selectIngestMode() (string, error) {

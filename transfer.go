@@ -137,19 +137,31 @@ func runInteractiveTransfer(cmd *cobra.Command) error {
 		exitWithError(fmt.Sprintf("error selecting destination: %v", err), ExitUsageError)
 	}
 
-	destTable, err := getDestinationTable()
-	if err != nil {
-		exitWithError(fmt.Sprintf("error getting destination table: %v", err), ExitUsageError)
+	var destTable string
+	if !isParquetDriver(destConfig.Driver) {
+		destTable, err = getDestinationTable()
+		if err != nil {
+			exitWithError(fmt.Sprintf("error getting destination table: %v", err), ExitUsageError)
+		}
 	}
 
-	ingestMode, err := selectIngestMode()
+	var ingestMode string
+	if isParquetDriver(destConfig.Driver) {
+		ingestMode, err = selectParquetIngestMode()
+	} else {
+		ingestMode, err = selectIngestMode()
+	}
 	if err != nil {
 		exitWithError(fmt.Sprintf("error selecting ingest mode: %v", err), ExitUsageError)
 	}
 
-	mode, err := selectTransferMode()
-	if err != nil {
-		exitWithError(fmt.Sprintf("error selecting transfer mode: %v", err), ExitUsageError)
+	// Transfer mode is irrelevant for Parquet destinations — skip the prompt.
+	mode := BatchMode
+	if !isParquetDriver(destConfig.Driver) {
+		mode, err = selectTransferMode()
+		if err != nil {
+			exitWithError(fmt.Sprintf("error selecting transfer mode: %v", err), ExitUsageError)
+		}
 	}
 
 	query, err := getQuery()
@@ -160,7 +172,11 @@ func runInteractiveTransfer(cmd *cobra.Command) error {
 	fmt.Println("\n📋 Transfer Summary:")
 	fmt.Printf("Source: %s (%s)\n", sourceConfig.Name, sourceConfig.Driver)
 	fmt.Printf("Destination: %s (%s)\n", destConfig.Name, destConfig.Driver)
-	fmt.Printf("Target Table: %s\n", destTable)
+	if isParquetDriver(destConfig.Driver) {
+		fmt.Printf("Output File: %s\n", destConfig.URI)
+	} else {
+		fmt.Printf("Target Table: %s\n", destTable)
+	}
 	fmt.Printf("Ingest Mode: %s\n", ingestMode)
 	fmt.Printf("Transfer Mode: %s\n", mode)
 	fmt.Printf("Query: %s\n\n", query)
@@ -198,6 +214,11 @@ func runInteractiveTransfer(cmd *cobra.Command) error {
 		}
 	}
 
+	interactiveDisplayTable := destTable
+	if isParquetDriver(destConfig.Driver) {
+		interactiveDisplayTable = destConfig.URI
+	}
+
 	if isJSON() {
 		outputJSON(TransferResult{
 			Status:          "success",
@@ -205,7 +226,7 @@ func runInteractiveTransfer(cmd *cobra.Command) error {
 			Batches:         result.batches,
 			Source:          DBInfo{Driver: sourceConfig.Driver, Name: sourceConfig.Name},
 			Destination:     DBInfo{Driver: destConfig.Driver, Name: destConfig.Name},
-			Table:           destTable,
+			Table:           interactiveDisplayTable,
 			IngestMode:      ingestMode,
 			TransferMode:    string(mode),
 			Query:           query,
@@ -231,6 +252,8 @@ func runFlagBasedTransfer(cmd *cobra.Command) error {
 	autoInstall, _ := cmd.Flags().GetBool("auto-install-drivers")
 	noInstall, _ := cmd.Flags().GetBool("no-install-drivers")
 
+	isParquetDest := isParquetDriver(destDriver)
+
 	var missing []string
 	if sourceDriver == "" {
 		missing = append(missing, "--source-driver")
@@ -244,7 +267,7 @@ func runFlagBasedTransfer(cmd *cobra.Command) error {
 	if destURI == "" {
 		missing = append(missing, "--dest-uri")
 	}
-	if destTable == "" {
+	if destTable == "" && !isParquetDest {
 		missing = append(missing, "--dest-table")
 	}
 
@@ -279,15 +302,25 @@ func runFlagBasedTransfer(cmd *cobra.Command) error {
 	sourceConfig := &DatabaseConfig{Driver: sourceDriver, URI: sourceURI, Name: sourceDriver}
 	destConfig := &DatabaseConfig{Driver: destDriver, URI: destURI, Name: destDriver}
 
+	// For Parquet destinations, use the file path as the display table name.
+	displayTable := destTable
+	if isParquetDest {
+		displayTable = destURI
+	}
+
 	if dryRun {
-		return outputDryRun(sourceConfig, destConfig, destTable, ingestMode, transferMode, query)
+		return outputDryRun(sourceConfig, destConfig, displayTable, ingestMode, transferMode, query)
 	}
 
 	if !skipConfirm && !isJSON() && !isQuiet() {
 		logInfo("\n📋 Transfer Summary:\n")
 		logInfo("Source: %s (%s)\n", sourceConfig.Name, sourceConfig.Driver)
 		logInfo("Destination: %s (%s)\n", destConfig.Name, destConfig.Driver)
-		logInfo("Target Table: %s\n", destTable)
+		if isParquetDest {
+			logInfo("Output File: %s\n", destURI)
+		} else {
+			logInfo("Target Table: %s\n", destTable)
+		}
 		logInfo("Ingest Mode: %s\n", ingestMode)
 		logInfo("Transfer Mode: %s\n", transferMode)
 		logInfo("Query: %s\n\n", query)
@@ -330,7 +363,7 @@ func runFlagBasedTransfer(cmd *cobra.Command) error {
 			Batches:         result.batches,
 			Source:          DBInfo{Driver: sourceConfig.Driver, Name: sourceConfig.Name},
 			Destination:     DBInfo{Driver: destConfig.Driver, Name: destConfig.Name},
-			Table:           destTable,
+			Table:           displayTable,
 			IngestMode:      ingestMode,
 			TransferMode:    string(transferMode),
 			Query:           query,
@@ -423,6 +456,10 @@ type transferResult struct {
 func executeTransfer(source, dest *DatabaseConfig, query, destTable, ingestMode string, mode TransferMode) (*transferResult, error) {
 	ctx := context.Background()
 
+	if isParquetDriver(source.Driver) {
+		return nil, fmt.Errorf("parquet is not supported as a source; to query a Parquet file, use --source-driver duckdb --source-uri :memory: and include read_parquet('file.parquet') in your query")
+	}
+
 	var srcDriver drivermgr.Driver
 	srcConfig := buildDriverConfig(source)
 	srcDB, err := srcDriver.NewDatabase(srcConfig)
@@ -436,20 +473,6 @@ func executeTransfer(source, dest *DatabaseConfig, query, destTable, ingestMode 
 		return nil, fmt.Errorf("failed to open source connection: %w", err)
 	}
 	defer srcConn.Close()
-
-	var destDrv drivermgr.Driver
-	destCfg := buildDriverConfig(dest)
-	destDB, err := destDrv.NewDatabase(destCfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create destination database: %w", err)
-	}
-	defer destDB.Close()
-
-	destConn, err := destDB.Open(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open destination connection: %w", err)
-	}
-	defer destConn.Close()
 
 	stmt, err := srcConn.NewStatement()
 	if err != nil {
@@ -466,6 +489,25 @@ func executeTransfer(source, dest *DatabaseConfig, query, destTable, ingestMode 
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 	defer stream.Release()
+
+	// Parquet destination: write directly to file, bypassing ADBC entirely.
+	if isParquetDriver(dest.Driver) {
+		return writeParquetDest(stream, dest.URI, ingestMode)
+	}
+
+	var destDrv drivermgr.Driver
+	destCfg := buildDriverConfig(dest)
+	destDB, err := destDrv.NewDatabase(destCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create destination database: %w", err)
+	}
+	defer destDB.Close()
+
+	destConn, err := destDB.Open(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open destination connection: %w", err)
+	}
+	defer destConn.Close()
 
 	switch mode {
 	case BatchMode:
