@@ -169,6 +169,10 @@ func getConnectionHelp(driver string) string {
 		return "  Example: path/to/output.parquet or /absolute/path/data.parquet\n" +
 			"  Built-in driver — no external installation required.\n" +
 			"  Ingest modes: create (fail if exists), replace (overwrite). Append is not supported."
+	case "s3":
+		return "  Example: s3://my-bucket/path/to/output.parquet\n" +
+			"  Auth: uses the standard AWS credential chain (env vars, ~/.aws/credentials, IAM roles).\n" +
+			"  Ingest modes: create (fail if object exists), replace (overwrite). Append is not supported."
 	default:
 		return ""
 	}
@@ -201,12 +205,13 @@ func selectDatabase(dbType string) (*DatabaseConfig, error) {
 		{Name: "BigQuery", Driver: "bigquery", URI: ""},
 		{Name: "MotherDuck", Driver: "motherduck", URI: ""},
 		{Name: "Parquet File", Driver: "parquet", URI: ""},
+		{Name: "Amazon S3 (Parquet)", Driver: "s3", URI: ""},
 		{Name: "Custom", Driver: "", URI: ""},
 	}
 
 	var templates []DatabaseConfig
 	for _, t := range allTemplates {
-		if t.Driver == "parquet" && !isDestination {
+		if isFileDest(t.Driver) && !isDestination {
 			continue
 		}
 		templates = append(templates, t)
@@ -249,6 +254,10 @@ func selectDatabase(dbType string) (*DatabaseConfig, error) {
 	if isParquetDriver(config.Driver) {
 		promptURI = promptui.Prompt{
 			Label: fmt.Sprintf("%s file path", config.Name),
+		}
+	} else if isS3Driver(config.Driver) {
+		promptURI = promptui.Prompt{
+			Label: fmt.Sprintf("%s URI (e.g. s3://bucket/path/output.parquet)", config.Name),
 		}
 	} else if needsURIMask(config.Driver) {
 		promptURI = promptui.Prompt{
