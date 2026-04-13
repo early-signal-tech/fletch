@@ -30,6 +30,12 @@ func isParquetDriver(driver string) bool {
 	return strings.ToLower(driver) == "parquet"
 }
 
+// isFileDest returns true for destinations that write directly to a file or
+// object store (Parquet, S3) and bypass ADBC entirely.
+func isFileDest(driver string) bool {
+	return isParquetDriver(driver) || isS3Driver(driver)
+}
+
 // writeParquetDest writes an Arrow record stream to a local Parquet file.
 // ingestMode controls file creation behavior:
 //   - create: fail if the file already exists

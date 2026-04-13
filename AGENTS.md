@@ -116,6 +116,7 @@ fletch transfer \
 | Snowflake | `snowflake` | `snowflake://user:pass@account/database` |
 | Flight SQL | `flightsql` | `grpc://host:port` |
 | Parquet File | `parquet` | `path/to/output.parquet` (destination only; built-in, no external driver needed) |
+| Amazon S3 | `s3` | `s3://bucket/path/to/output.parquet` (destination only; writes Parquet; uses AWS credential chain) |
 
 ## BigQuery Authentication & Connection
 
@@ -160,6 +161,114 @@ db, err := drv.NewDatabase(map[string]string{
     "adbc.bigquery.sql.project_id": "my-gcp-project",
     "adbc.bigquery.sql.dataset_id": "bigquery-public-data",
 })
+```
+
+## Amazon S3 Authentication & Credentials
+
+**Important**: S3 destinations use the standard AWS credential chain. Credentials are NOT passed in the URI.
+
+### Authentication Methods (in order of precedence)
+
+1. **Environment Variables** - Recommended for scripts and CI/CD
+   ```bash
+   export AWS_ACCESS_KEY_ID="your-access-key"
+   export AWS_SECRET_ACCESS_KEY="your-secret-key"
+   export AWS_REGION="us-east-1"  # optional, defaults to us-east-1
+   ```
+
+2. **AWS Credentials File** - Recommended for local development
+   ```bash
+   # Create or edit ~/.aws/credentials
+   [default]
+   aws_access_key_id = your-access-key
+   aws_secret_access_key = your-secret-key
+   
+   # Optional: ~/.aws/config for region
+   [default]
+   region = us-east-1
+   ```
+
+3. **IAM Role** - Recommended for AWS EC2/Lambda/ECS
+   - Attach an IAM role with S3 permissions to your EC2 instance, Lambda function, or ECS task
+   - No credentials required; AWS SDK automatically uses the role
+
+4. **Temporary Credentials** - For temporary access
+   ```bash
+   export AWS_ACCESS_KEY_ID="temporary-key"
+   export AWS_SECRET_ACCESS_KEY="temporary-secret"
+   export AWS_SESSION_TOKEN="session-token"
+   ```
+
+### Loading from .env File
+
+If you store credentials in a `.env` file:
+
+```bash
+# .env format
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION=us-east-1
+
+# Load into shell session
+set -a
+source .env
+set +a
+
+# Then run fletch
+fletch transfer --source-driver ... --dest-driver s3 ...
+```
+
+## MotherDuck Authentication & Token
+
+MotherDuck supports two authentication methods:
+
+### 1. Environment Variable (Recommended for automation)
+```bash
+export MOTHERDUCK_TOKEN="your-token"
+fletch transfer \
+  --source-driver motherduck \
+  --source-uri "md:database_name" \
+  --dest-driver duckdb \
+  --dest-uri "output.duckdb" \
+  --dest-table my_table \
+  --query "SELECT * FROM table" \
+  --yes --output json
+```
+
+### 2. Browser-based SSO (Recommended for development)
+If no token is set, fletch will prompt for browser-based login:
+```bash
+fletch transfer \
+  --source-driver motherduck \
+  --source-uri "md:database_name" \
+  --dest-driver duckdb \
+  --dest-uri "output.duckdb" \
+  --dest-table my_table \
+  --query "SELECT * FROM table" \
+  --yes --output json
+# Opens browser for SSO login automatically
+```
+
+## PostgreSQL & Snowflake Credentials
+
+### PostgreSQL
+Include credentials in the URI:
+```bash
+fletch transfer \
+  --source-driver postgresql \
+  --source-uri "postgresql://username:password@host:5432/database" \
+  ...
+```
+
+**Security Note**: Passwords in URIs are visible in process listings. For production, use environment variables or connection poolers.
+
+### Snowflake
+Include credentials in the URI:
+```bash
+fletch transfer \
+  --source-driver snowflake \
+  --source-uri "snowflake://username:password@account/database/schema" \
+  ...
 ```
 
 ## JSON Output
@@ -319,6 +428,21 @@ cat complex_query.sql | fletch transfer \
   --yes --output json
 ```
 
+### PostgreSQL to Amazon S3 (Parquet)
+
+```bash
+fletch transfer \
+ --source-driver postgresql \
+ --source-uri "postgresql://user:pass@host:5432/mydb" \
+ --dest-driver s3 \
+ --dest-uri "s3://my-bucket/exports/orders_2025.parquet" \
+ --query "SELECT * FROM orders WHERE year = 2025" \
+ --ingest-mode create \
+ --yes --output json
+```
+
+Note: `--dest-table` is not required. Auth uses the standard AWS credential chain (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars, `~/.aws/credentials`, or IAM roles). Use `--ingest-mode replace` to overwrite an existing object. Append mode is not supported.
+
 ### PostgreSQL to Parquet file
 
 ```bash
@@ -353,9 +477,7 @@ fletch transfer \
 | `connection.go` | Database config, connection helpers, test-connection command |
 | `drivers.go` | Driver installation, list-drivers command |
 | `output.go` | Exit codes, result types, JSON output helpers |
-| `parquet.go` | Built-in Parquet file destination writer (`isParquetDriver`, `writeParquetDest`) |
-
-## Development Notes
+| `s3.go` | Amazon S3 destination writer (`isS3Driver`, `writeS3Dest`; streams data as Parquet to S3) |
 
 - Uses `cobra` for CLI framework and `promptui` for interactive prompts.
 - Driver configuration is mapped per-database in `buildDriverConfig()` in `connection.go`. DuckDB uses `path`, most others use `uri`.
